@@ -1,0 +1,14 @@
+# rahasia
+.env
+*.env.local
+
+# editor / OS
+.idea/
+.vscode/
+.DS_Store
+
+# frontend
+node_modules/
+dist/
+Frontend/_backup_*/
+_arsip/

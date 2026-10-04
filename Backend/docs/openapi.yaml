@@ -1,0 +1,1629 @@
+openapi: 3.0.3
+info:
+  title: Merit System Personel Polri API
+  version: 1.0.0
+  description: 'API pengelolaan data personel dan riwayat jabatan Polri.
+
+
+    Autentikasi: Bearer token (JWT). User login melalui `POST /login`, aplikasi lain melalui `POST /oauth/token`.'
+servers:
+- url: http://localhost:8080/api
+  description: Lokal
+tags:
+- name: Auth
+- name: Dashboard
+- name: Referensi
+  description: Data master untuk pilihan di form
+- name: Personel
+- name: Riwayat Jabatan
+- name: Pengguna
+  description: Khusus Admin SSDM
+- name: API Client
+  description: Khusus Admin SSDM
+security:
+- bearerAuth: []
+paths:
+  /login:
+    post:
+      tags:
+      - Auth
+      summary: Login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - username
+              - password
+              properties:
+                username:
+                  type: string
+                  example: admin.ssdm
+                password:
+                  type: string
+                  example: '123'
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      properties:
+                        token:
+                          type: string
+                          example: eyJhbGciOiJIUzI1NiIs...
+                        expires_at:
+                          type: string
+                          format: date-time
+                        user:
+                          $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Tidak terautentikasi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Tidak memiliki akses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /oauth/token:
+    post:
+      tags:
+      - Auth
+      summary: Token aplikasi (client credentials)
+      description: Token berlaku 1 jam.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - client_id
+              - client_secret
+              properties:
+                grant_type:
+                  type: string
+                  enum:
+                  - client_credentials
+                client_id:
+                  type: string
+                  example: app-pmj
+                client_secret:
+                  type: string
+                  example: secret-demo-2026
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      properties:
+                        access_token:
+                          type: string
+                        token_type:
+                          type: string
+                          example: Bearer
+                        expires_in:
+                          type: integer
+                          example: 3600
+                        expires_at:
+                          type: string
+                          format: date-time
+                        scopes:
+                          type: array
+                          items:
+                            type: string
+                          example:
+                          - personel:read
+                          - jabatan:read
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Tidak terautentikasi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Tidak memiliki akses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /auth/me:
+    get:
+      tags:
+      - Auth
+      summary: Identitas pemanggil
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                          - user
+                          - client
+                        id:
+                          type: integer
+                          example: 3
+                        name:
+                          type: string
+                          example: opr.pmj
+                        role:
+                          type: string
+                          enum:
+                          - ADMIN_SSDM
+                          - OPERATOR
+                          - API_CLIENT
+                        satker_id:
+                          type: integer
+                          nullable: true
+                          example: 38
+                        permissions:
+                          type: array
+                          items:
+                            type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /dashboard:
+    get:
+      tags:
+      - Dashboard
+      summary: Ringkasan beranda
+      description: Permission `personel:read`. Angka dibatasi wilayah satker pemanggil.
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      properties:
+                        total:
+                          type: integer
+                          example: 500
+                        aktif:
+                          type: integer
+                          example: 450
+                        polri:
+                          type: integer
+                          example: 420
+                        pns:
+                          type: integer
+                          example: 80
+                        tanpa_jabatan:
+                          type: integer
+                          example: 12
+                        per_status:
+                          type: array
+                          items:
+                            $ref: '#/components/schemas/Jumlah'
+                        per_kelompok_pangkat:
+                          type: array
+                          items:
+                            $ref: '#/components/schemas/Jumlah'
+                        terbaru:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              nama:
+                                type: string
+                              nrp_nip:
+                                type: string
+                              pangkat:
+                                type: string
+                              satker:
+                                type: string
+                              created_at:
+                                type: string
+                                format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /export/personel:
+    get:
+      tags:
+      - Dashboard
+      summary: Export Excel personel
+      description: Permission `personel:read`. Filter sama dengan `GET /personel` (tanpa pagination, semua baris diekspor). Tanpa filter, file berisi sheet Rekap Satker dan Daftar Personel; dengan filter, hanya Daftar Personel. Selalu dibatasi wilayah pemanggil.
+      parameters:
+      - name: q
+        in: query
+        description: Cari nama atau awalan NRP/NIP
+        schema:
+          type: string
+          maxLength: 100
+      - name: satker_id
+        in: query
+        description: Filter satker (ikut turunannya)
+        schema:
+          type: integer
+          minimum: 1
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - AKTIF
+          - PENSIUN
+          - MENINGGAL
+          - DIBERHENTIKAN
+          - MUTASI_KELUAR
+      - name: jenis
+        in: query
+        schema:
+          type: string
+          enum:
+          - POLRI
+          - PNS
+      - name: kelompok
+        in: query
+        schema:
+          type: string
+          example: Bintara
+      - name: tanpa_jabatan
+        in: query
+        schema:
+          type: boolean
+      - name: akan_pensiun
+        in: query
+        description: Hanya personel aktif yang mencapai usia 58 tahun dalam 12 bulan ke depan (urut dari yang paling dekat)
+        schema:
+          type: boolean
+      - name: sort
+        in: query
+        description: 'Urutan. `pangkat` = tertinggi dulu, `pensiun` = paling dekat pensiun dulu. Awalan `-` membalik urutan. Default `nama`.'
+        schema:
+          type: string
+          enum: [nama, -nama, pangkat, -pangkat, satker, -satker, pensiun, -pensiun]
+      responses:
+        '200':
+          description: File Excel
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /referensi/pangkat:
+    get:
+      tags:
+      - Referensi
+      summary: Daftar pangkat
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/Pangkat'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /referensi/satker:
+    get:
+      tags:
+      - Referensi
+      summary: Daftar satker
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/Satker'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      description: 'Default: satker di wilayah pemanggil. `?semua=1` untuk seluruh satker.'
+      parameters:
+      - name: semua
+        in: query
+        schema:
+          type: string
+          enum:
+          - '1'
+  /referensi/fungsi:
+    get:
+      tags:
+      - Referensi
+      summary: Daftar fungsi
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/Fungsi'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /referensi/nivelering:
+    get:
+      tags:
+      - Referensi
+      summary: Daftar nivelering
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/Nivelering'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /personel:
+    get:
+      tags:
+      - Personel
+      summary: Daftar personel
+      description: Permission `personel:read`. Hasil dibatasi wilayah satker pemanggil.
+      parameters:
+      - name: q
+        in: query
+        description: Cari nama atau awalan NRP/NIP
+        schema:
+          type: string
+          maxLength: 100
+      - name: satker_id
+        in: query
+        description: Filter satker (ikut turunannya)
+        schema:
+          type: integer
+          minimum: 1
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - AKTIF
+          - PENSIUN
+          - MENINGGAL
+          - DIBERHENTIKAN
+          - MUTASI_KELUAR
+      - name: jenis
+        in: query
+        schema:
+          type: string
+          enum:
+          - POLRI
+          - PNS
+      - name: kelompok
+        in: query
+        schema:
+          type: string
+          example: Bintara
+      - name: tanpa_jabatan
+        in: query
+        schema:
+          type: boolean
+      - name: akan_pensiun
+        in: query
+        description: Hanya personel aktif yang mencapai usia 58 tahun dalam 12 bulan ke depan (urut dari yang paling dekat)
+        schema:
+          type: boolean
+      - name: sort
+        in: query
+        description: 'Urutan. `pangkat` = tertinggi dulu, `pensiun` = paling dekat pensiun dulu. Awalan `-` membalik urutan. Default `nama`.'
+        schema:
+          type: string
+          enum: [nama, -nama, pangkat, -pangkat, satker, -satker, pensiun, -pensiun]
+      - name: page
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      properties:
+                        items:
+                          type: array
+                          items:
+                            $ref: '#/components/schemas/Personel'
+                        page:
+                          type: integer
+                          example: 1
+                        limit:
+                          type: integer
+                          example: 20
+                        total:
+                          type: integer
+                          example: 154
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+      - Personel
+      summary: Tambah personel
+      description: Permission `personel:write`.
+      requestBody:
+        $ref: '#/components/requestBodies/PersonelRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/PersonelDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /personel/{id}:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      tags:
+      - Personel
+      summary: Detail personel beserta riwayat jabatan dan sertifikasi
+      description: Permission `personel:read`. Field `sertifikasi` berisi kualifikasi jenis PELATIHAN (terbaru dulu).
+      responses:
+        '200':
+          $ref: '#/components/responses/PersonelDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Personel
+      summary: Ubah data personel
+      description: Permission `personel:write`.
+      requestBody:
+        $ref: '#/components/requestBodies/PersonelRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/PersonelDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+      - Personel
+      summary: Hapus personel
+      description: Permission `personel:delete`. Riwayat jabatan ikut terhapus (soft delete).
+      responses:
+        '200':
+          $ref: '#/components/responses/Message'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /personel/{id}/drh:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      tags:
+      - Personel
+      summary: Unduh Daftar Riwayat Hidup (PDF)
+      description: Permission `personel:read`. PDF berisi identitas, ringkasan karier, dan daftar riwayat jabatan (jabatan saat ini paling atas). Dibatasi wilayah pemanggil.
+      responses:
+        '200':
+          description: File PDF
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /personel/{id}/riwayat-jabatan:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    get:
+      tags:
+      - Riwayat Jabatan
+      summary: Daftar riwayat jabatan personel
+      description: Permission `jabatan:read`. Urut berdasarkan `tmt_mulai`.
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/RiwayatJabatan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+      - Riwayat Jabatan
+      summary: Tambah riwayat jabatan
+      description: Permission `jabatan:write`. Jabatan definitif aktif sebelumnya otomatis ditutup per H-1 `tmt_mulai`.
+      requestBody:
+        $ref: '#/components/requestBodies/RiwayatJabatanRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/RiwayatJabatanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /riwayat-jabatan/{id}:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    put:
+      tags:
+      - Riwayat Jabatan
+      summary: Ubah riwayat jabatan
+      description: Permission `jabatan:write`.
+      requestBody:
+        $ref: '#/components/requestBodies/RiwayatJabatanRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/RiwayatJabatanDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+      - Riwayat Jabatan
+      summary: Hapus riwayat jabatan
+      description: Permission `jabatan:delete`.
+      responses:
+        '200':
+          $ref: '#/components/responses/Message'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /users:
+    get:
+      tags:
+      - Pengguna
+      summary: Daftar pengguna
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      properties:
+                        items:
+                          type: array
+                          items:
+                            $ref: '#/components/schemas/User'
+                        page:
+                          type: integer
+                          example: 1
+                        limit:
+                          type: integer
+                          example: 20
+                        total:
+                          type: integer
+                          example: 10
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/Limit'
+    post:
+      tags:
+      - Pengguna
+      summary: Tambah pengguna
+      description: Operator wajib mengisi `satker_id`, Admin SSDM tidak.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - username
+              - password
+              - role
+              properties:
+                username:
+                  type: string
+                  pattern: ^[a-z0-9_.]{4,50}$
+                  example: opr.jaktim
+                password:
+                  type: string
+                  minLength: 8
+                  example: rahasia123
+                role:
+                  type: string
+                  enum:
+                  - ADMIN_SSDM
+                  - OPERATOR
+                  example: OPERATOR
+                satker_id:
+                  type: integer
+                  nullable: true
+                  example: 290
+      responses:
+        '201':
+          $ref: '#/components/responses/UserDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /users/{id}:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    put:
+      tags:
+      - Pengguna
+      summary: Ubah role / satker pengguna
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - role
+              properties:
+                role:
+                  type: string
+                  enum:
+                  - ADMIN_SSDM
+                  - OPERATOR
+                  example: OPERATOR
+                satker_id:
+                  type: integer
+                  nullable: true
+                  example: 275
+      responses:
+        '200':
+          $ref: '#/components/responses/UserDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /users/{id}/status:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    patch:
+      tags:
+      - Pengguna
+      summary: Aktif / nonaktifkan pengguna
+      requestBody:
+        $ref: '#/components/requestBodies/StatusRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/UserDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /users/{id}/reset-password:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    post:
+      tags:
+      - Pengguna
+      summary: Reset password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - password
+              properties:
+                password:
+                  type: string
+                  minLength: 8
+                  example: passwordBaru123
+      responses:
+        '200':
+          $ref: '#/components/responses/Message'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api-clients:
+    get:
+      tags:
+      - API Client
+      summary: Daftar API client
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      type: object
+                      properties:
+                        items:
+                          type: array
+                          items:
+                            $ref: '#/components/schemas/ApiClient'
+                        page:
+                          type: integer
+                          example: 1
+                        limit:
+                          type: integer
+                          example: 20
+                        total:
+                          type: integer
+                          example: 10
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+      parameters:
+      - $ref: '#/components/parameters/Page'
+      - $ref: '#/components/parameters/Limit'
+    post:
+      tags:
+      - API Client
+      summary: Tambah API client
+      description: '`client_secret` hanya ditampilkan sekali.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - nama_aplikasi
+              - client_id
+              - scopes
+              properties:
+                nama_aplikasi:
+                  type: string
+                  maxLength: 150
+                  example: SIPP Polres Jaksel
+                client_id:
+                  type: string
+                  pattern: ^[a-z0-9][a-z0-9-]{2,63}$
+                  example: sipp-jaksel
+                scopes:
+                  $ref: '#/components/schemas/Scopes'
+                akses_satker_id:
+                  type: integer
+                  nullable: true
+                  example: 275
+      responses:
+        '201':
+          $ref: '#/components/responses/ApiClientWithSecret'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api-clients/{id}:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    put:
+      tags:
+      - API Client
+      summary: Ubah API client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - nama_aplikasi
+              - scopes
+              properties:
+                nama_aplikasi:
+                  type: string
+                  example: SIPP Polres Jaksel
+                scopes:
+                  $ref: '#/components/schemas/Scopes'
+                akses_satker_id:
+                  type: integer
+                  nullable: true
+                  example: 275
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/ApiClient'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api-clients/{id}/status:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    patch:
+      tags:
+      - API Client
+      summary: Aktif / nonaktifkan API client
+      requestBody:
+        $ref: '#/components/requestBodies/StatusRequest'
+      responses:
+        '200':
+          description: Berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Success'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/ApiClient'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /api-clients/{id}/rotate-secret:
+    parameters:
+    - $ref: '#/components/parameters/IdPath'
+    post:
+      tags:
+      - API Client
+      summary: Ganti client secret
+      responses:
+        '200':
+          $ref: '#/components/responses/ApiClientWithSecret'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  requestBodies:
+    PersonelRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - jenis
+            - nrp_nip
+            - nama
+            - pangkat_id
+            - satker_id
+            - tanggal_lahir
+            properties:
+              jenis:
+                type: string
+                enum:
+                - POLRI
+                - PNS
+                example: POLRI
+              nrp_nip:
+                type: string
+                description: NRP 8 digit (POLRI) / NIP 18 digit (PNS)
+                example: '77050001'
+              nama:
+                type: string
+                maxLength: 150
+                example: Alfian Wibowo
+              pangkat_id:
+                type: integer
+                example: 11
+              satker_id:
+                type: integer
+                example: 262
+              tempat_lahir:
+                type: string
+                nullable: true
+                maxLength: 100
+                example: Jakarta
+              tanggal_lahir:
+                type: string
+                format: date
+                description: YYYY-MM-DD
+                example: '1977-05-12'
+              status:
+                type: string
+                enum:
+                - AKTIF
+                - PENSIUN
+                - MENINGGAL
+                - DIBERHENTIKAN
+                - MUTASI_KELUAR
+                default: AKTIF
+    RiwayatJabatanRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - nama_jabatan
+            - satker_id
+            - tmt_mulai
+            properties:
+              nama_jabatan:
+                type: string
+                maxLength: 300
+                example: Kanit 2 Satreskrim Polres Metro Jakarta Barat
+              satker_id:
+                type: integer
+                example: 262
+              fungsi_id:
+                type: integer
+                nullable: true
+                example: 3
+              nivelering_id:
+                type: integer
+                nullable: true
+              tmt_mulai:
+                type: string
+                format: date
+                example: '2026-10-01'
+              tmt_selesai:
+                type: string
+                format: date
+                nullable: true
+                description: Kosongkan untuk jabatan saat ini
+              status_jabatan:
+                type: string
+                enum:
+                - DEFINITIF
+                - PLT
+                - PLH
+                default: DEFINITIF
+              nomor_skep:
+                type: string
+                nullable: true
+                maxLength: 100
+                example: ST/100/X/KEP./2026
+              keterangan:
+                type: string
+                nullable: true
+    StatusRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - is_active
+            properties:
+              is_active:
+                type: boolean
+                example: false
+  responses:
+    PersonelDetail:
+      description: Berhasil
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Success'
+            - type: object
+              properties:
+                data:
+                  $ref: '#/components/schemas/PersonelDetail'
+    RiwayatJabatanDetail:
+      description: Berhasil
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Success'
+            - type: object
+              properties:
+                data:
+                  $ref: '#/components/schemas/RiwayatJabatan'
+    UserDetail:
+      description: Berhasil
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Success'
+            - type: object
+              properties:
+                data:
+                  $ref: '#/components/schemas/User'
+    ApiClientWithSecret:
+      description: Berhasil
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Success'
+            - type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    client:
+                      $ref: '#/components/schemas/ApiClient'
+                    client_secret:
+                      type: string
+                      example: 3q2-7wEAAAAx9Xb1...
+                    peringatan:
+                      type: string
+                      example: Simpan client_secret ini. Secret tidak akan ditampilkan lagi.
+    Message:
+      description: Berhasil
+      content:
+        application/json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Success'
+            - type: object
+              properties:
+                data:
+                  type: object
+                  properties:
+                    message:
+                      type: string
+                      example: berhasil dihapus
+    BadRequest:
+      description: Request tidak valid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: id personel harus berupa angka positif
+            details: null
+    Unauthorized:
+      description: Tidak terautentikasi
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: token tidak valid atau kedaluwarsa
+            details: null
+    Forbidden:
+      description: Tidak memiliki akses
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: 'anda tidak memiliki akses: personel:write'
+            details: null
+    NotFound:
+      description: Data tidak ditemukan
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: personel tidak ditemukan
+            details: null
+    Conflict:
+      description: Data duplikat
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: NRP/NIP sudah terdaftar
+            details: null
+    ValidationError:
+      description: Validasi gagal
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error: validasi gagal
+            details:
+              nrp_nip: NRP POLRI harus 8 digit angka
+              tanggal_lahir: tanggal lahir tidak boleh di masa depan
+  schemas:
+    Success:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+        details:
+          nullable: true
+    Pangkat:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 11
+        jenis:
+          type: string
+          example: POLRI
+        kode:
+          type: string
+          example: Aipda
+        nama:
+          type: string
+          example: Ajun Inspektur Polisi Dua
+        kelompok:
+          type: string
+          example: Bintara
+        urutan:
+          type: integer
+          example: 11
+    Satker:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 262
+        kode:
+          type: string
+          example: PMJ.POLRES03.SATRESKRIM.UNIT2
+        nama:
+          type: string
+          example: Unit 2 SATRESKRIM
+        parent_id:
+          type: integer
+          nullable: true
+          example: 260
+        tingkat:
+          type: string
+          example: UNIT
+    Fungsi:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 3
+        nama:
+          type: string
+          example: Reskrim
+    Nivelering:
+      type: object
+      properties:
+        id:
+          type: integer
+        kode:
+          type: string
+          example: IIIB
+        urutan:
+          type: integer
+    Personel:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        jenis:
+          type: string
+          enum:
+          - POLRI
+          - PNS
+        nrp_nip:
+          type: string
+          example: '77050001'
+        nama:
+          type: string
+          example: Alfian Wibowo
+        pangkat_id:
+          type: integer
+        satker_id:
+          type: integer
+        tempat_lahir:
+          type: string
+          nullable: true
+          example: Jakarta
+        tanggal_lahir:
+          type: string
+          format: date
+          example: '1977-05-12'
+        status:
+          type: string
+          example: AKTIF
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        pangkat:
+          $ref: '#/components/schemas/Pangkat'
+        satker:
+          $ref: '#/components/schemas/Satker'
+        jabatan_saat_ini:
+          $ref: '#/components/schemas/RiwayatJabatan'
+    PersonelDetail:
+      allOf:
+      - $ref: '#/components/schemas/Personel'
+      - type: object
+        properties:
+          riwayat_jabatan:
+            type: array
+            description: Urut kronologis (jabatan pertama dulu)
+            items:
+              $ref: '#/components/schemas/RiwayatJabatan'
+          sertifikasi:
+            type: array
+            description: Kualifikasi jenis PELATIHAN, terbaru dulu
+            items:
+              $ref: '#/components/schemas/Sertifikasi'
+    Sertifikasi:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 4021
+        personel_id:
+          type: integer
+          example: 252
+        master_pendidikan_id:
+          type: integer
+          example: 17
+        institusi:
+          type: string
+          nullable: true
+          example: LEMDIKLAT POLRI
+        jurusan:
+          type: string
+          nullable: true
+        tahun_lulus:
+          type: integer
+          example: 2023
+        nomor_dokumen:
+          type: string
+          nullable: true
+          example: 39311/DIKJUR_RESERSE/2023
+        keterangan:
+          type: string
+          nullable: true
+        pendidikan:
+          type: object
+          properties:
+            id:
+              type: integer
+              example: 17
+            jenis:
+              type: string
+              example: PELATIHAN
+            kode:
+              type: string
+              example: DIKJUR_RESERSE
+            nama:
+              type: string
+              example: Dikjur Reserse
+    RiwayatJabatan:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 8
+        personel_id:
+          type: integer
+          example: 1
+        nama_jabatan:
+          type: string
+          example: Banit 2 Satreskrim Polres Metro Jakarta Barat Polda Metro Jaya
+        satker_id:
+          type: integer
+          example: 262
+        fungsi_id:
+          type: integer
+          nullable: true
+          example: 3
+        nivelering_id:
+          type: integer
+          nullable: true
+        tmt_mulai:
+          type: string
+          format: date
+          example: '2024-08-29'
+        tmt_selesai:
+          type: string
+          format: date
+          nullable: true
+          example: null
+        status_jabatan:
+          type: string
+          enum:
+          - DEFINITIF
+          - PLT
+          - PLH
+        nomor_skep:
+          type: string
+          nullable: true
+          example: ST/738/VIII/KEP./2024
+        keterangan:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        satker:
+          $ref: '#/components/schemas/Satker'
+        fungsi:
+          $ref: '#/components/schemas/Fungsi'
+        nivelering:
+          $ref: '#/components/schemas/Nivelering'
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 3
+        username:
+          type: string
+          example: opr.pmj
+        role:
+          type: string
+          enum:
+          - ADMIN_SSDM
+          - OPERATOR
+        satker_id:
+          type: integer
+          nullable: true
+          example: 38
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+    Scopes:
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items:
+        type: string
+        enum:
+        - personel:read
+        - personel:write
+        - personel:delete
+        - jabatan:read
+        - jabatan:write
+        - jabatan:delete
+        - pangkat:read
+        - pangkat:write
+        - kualifikasi:read
+        - kualifikasi:write
+        - kualifikasi:delete
+      example:
+      - personel:read
+      - jabatan:read
+    ApiClient:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        nama_aplikasi:
+          type: string
+          example: Absensi Polda Metro Jaya
+        client_id:
+          type: string
+          example: app-pmj
+        scopes:
+          $ref: '#/components/schemas/Scopes'
+        akses_satker_id:
+          type: integer
+          nullable: true
+          example: 38
+        is_active:
+          type: boolean
+          example: true
+        created_at:
+          type: string
+          format: date-time
+    Jumlah:
+      type: object
+      properties:
+        label:
+          type: string
+        total:
+          type: integer
